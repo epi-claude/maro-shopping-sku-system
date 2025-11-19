@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A clothing inventory SKU generator system that creates 16-character semantic SKUs encoding item attributes. Integrates with Loyverse POS for sales tracking.
+A clothing inventory SKU generator system that creates 14-character semantic SKUs encoding item attributes. Integrates with Loyverse POS for sales tracking.
 
 ## Development Commands
 
@@ -30,36 +30,45 @@ npm run lint
 ## Architecture
 
 ### Tech Stack
-- **Framework**: Next.js 16 (App Router)
+- **Framework**: Next.js 16 (App Router with Turbopack)
 - **Database**: SQLite (dev) / PostgreSQL (prod)
 - **ORM**: Prisma
 - **Styling**: Tailwind CSS
+- **Barcode**: JsBarcode (Code 128)
 
 ### SKU Format
-16 characters: `TTCCPPSSBBYYMMDDNN`
-- Type (2) + Color (2) + Pattern (2) + Size (2) + Brand (2) + Date (6: YYMMDD) + Sequence (2: 01-99)
-- Example: `DRBLFLMDBA251017​01` = Dress, Blue, Floral, Medium, Brand A, Oct 17 2025, #1
+14 characters: `TTCCPPSSYYMMDDNN`
+- Type (2) + Color (2) + Pattern (2) + Size (2) + Date (6: YYMMDD) + Sequence (2: 01-99)
+- Example: `DRBLFLMD25101701` = Dress, Blue, Floral, Medium, Oct 17 2025, #1
 
 ### Project Structure
 ```
 src/
 ├── app/
 │   ├── api/
-│   │   ├── code-library/    # GET code library data
-│   │   └── inventory/       # CRUD inventory items
-│   ├── page.tsx             # SKU generator form
-│   ├── inventory/           # Inventory list view
-│   ├── scanner/             # Barcode scanner lookup
-│   └── codes/               # Code library management
+│   │   ├── code-library/       # GET all codes, POST/DELETE by category
+│   │   ├── inventory/          # GET list, POST create
+│   │   │   └── [sku]/          # GET/DELETE single item
+│   │   └── loyverse/sync/      # POST sync to Loyverse
+│   ├── page.tsx                # SKU generator form
+│   ├── inventory/              # Inventory list with Loyverse sync
+│   ├── scanner/                # Barcode scanner lookup
+│   ├── codes/                  # Code library management
+│   └── print/                  # Label printing (Avery 5160)
 ├── components/
-│   └── SKUGeneratorForm.tsx # Main form component
+│   ├── SKUGeneratorForm.tsx    # Main form component
+│   └── Barcode.tsx             # JsBarcode wrapper
 └── lib/
-    └── prisma.ts            # Prisma client singleton
+    └── prisma.ts               # Prisma client singleton
 
 prisma/
-├── schema.prisma            # Database schema
-├── seed.ts                  # Code library seed data
-└── dev.db                   # SQLite database (gitignored)
+├── schema.prisma               # Database schema
+├── seed.ts                     # Code library seed data
+└── dev.db                      # SQLite database (gitignored)
+
+docs/
+├── LEARNINGS.md                # Errors and solutions
+└── PATTERNS.md                 # Reusable code patterns
 ```
 
 ### Data Model
@@ -68,32 +77,56 @@ prisma/
 - `Type` - Clothing types (SH, DR, PN, etc.)
 - `Color` - Colors with optional hex values
 - `Pattern` - Patterns (SD, FL, ST, etc.)
-- `Size` - Universal sizes with sort order
-- `Brand` - Brands with custom 2-char codes
+- `Size` - Universal sizes with sort order and abbreviation
 
 **Inventory**:
-- `sku` (16-char primary key)
+- `sku` (14-char primary key)
 - Foreign keys to all code libraries
 - `displayName` - Auto-generated: "Type, Color Pattern, Size"
 - `purchaseCost`, `sellingPrice`
-- `syncedToLoyverse` - Boolean for Loyverse sync status
+- `syncedToLoyverse`, `loyverseSyncedAt` - Sync tracking
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/code-library` | GET | All code libraries |
+| `/api/code-library/[category]` | POST | Add code to category |
+| `/api/code-library/[category]/[code]` | DELETE | Delete code |
+| `/api/inventory` | GET | List inventory (search param) |
+| `/api/inventory` | POST | Create inventory item |
+| `/api/inventory/[sku]` | GET | Get single item |
+| `/api/inventory/[sku]` | DELETE | Delete item |
+| `/api/loyverse/sync` | POST | Sync items to Loyverse |
 
 ### Key Patterns
 
-- **SKU Generation**: POST to `/api/inventory` calculates next sequence number by querying existing SKUs with same 14-char prefix
+- **SKU Generation**: POST to `/api/inventory` calculates next sequence number by querying existing SKUs with same 12-char prefix (without sequence)
 - **Display Name Format**: `{Type}, {Color} {Pattern}, {Size abbrev}` (e.g., "Dress, Blue Floral, M")
-- **Code Library**: Pre-populated via seed, codes are unique per category (BL in colors ≠ BL in brands)
+- **Code Library**: Pre-populated via seed, codes are unique per category (BL in colors ≠ BL in patterns)
 
 ### Loyverse Integration
 
-Manual sync via API. Items push with:
-- `display_name` - For receipts
-- `sku` - 16-char code
-- `cost`, `price`
-- Category mapping from type code
+Manual sync via `/api/loyverse/sync`. Requires `LOYVERSE_API_TOKEN` in `.env.local`.
+
+Items sync with:
+- `item_name` - Display name for receipts
+- `sku` / `barcode` - 14-char SKU code
+- `cost` / `price` - Purchase cost and selling price
+- `category_id` - Matched by type name
 
 ## Important Notes
 
 - SKUs are immutable once generated - use notes field for corrections
 - Maximum 99 items per attribute-date combination
 - Database file is in `prisma/dev.db` (gitignored)
+- Always run `npx prisma generate` after schema changes, then restart dev server
+
+## Documentation Maintenance
+
+**IMPORTANT**: When working on this project, update documentation:
+
+1. **docs/LEARNINGS.md** - Add any errors encountered and their solutions
+2. **docs/PATTERNS.md** - Add any reusable patterns discovered
+
+This ensures continuous improvement and knowledge retention across sessions.
