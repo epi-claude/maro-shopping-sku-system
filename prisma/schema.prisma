@@ -1,0 +1,85 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Code Library Tables
+
+model Type {
+  code        String   @id
+  name        String   @unique
+  createdAt   DateTime @default(now())
+  inventory   Inventory[]
+}
+
+model Color {
+  code        String   @id
+  name        String   @unique
+  hexValue    String?  // Optional: for UI color swatches
+  createdAt   DateTime @default(now())
+  inventory   Inventory[]
+}
+
+model Pattern {
+  code        String   @id
+  name        String   @unique
+  createdAt   DateTime @default(now())
+  inventory   Inventory[]
+}
+
+model Size {
+  code        String   @id
+  name        String   // Full name: "Small", "Medium", etc.
+  abbrev      String   // Display abbreviation: "S", "M", etc.
+  sortOrder   Int      // For ordering sizes logically
+  createdAt   DateTime @default(now())
+  inventory   Inventory[]
+}
+
+// Main Inventory Table
+
+model Inventory {
+  sku             String   @id
+
+  // Foreign keys to code libraries
+  typeCode        String
+  colorCode       String
+  patternCode     String
+  sizeCode        String
+
+  // SKU components
+  dateCode        String   // YYMMDD
+  sequenceNum     String   // 01-99
+
+  // Business data
+  displayName     String   // Auto-generated: "Dress, Blue Floral, M"
+  purchaseDate    DateTime
+  purchaseCost    Float
+  sellingPrice    Float
+
+  // Corrections/notes
+  notes           String?
+
+  // Loyverse sync
+  syncedToLoyverse Boolean @default(false)
+  loyverseSyncedAt DateTime?
+
+  // Audit
+  createdAt       DateTime @default(now())
+
+  // Relations
+  type            Type     @relation(fields: [typeCode], references: [code])
+  color           Color    @relation(fields: [colorCode], references: [code])
+  pattern         Pattern  @relation(fields: [patternCode], references: [code])
+  size            Size     @relation(fields: [sizeCode], references: [code])
+
+  // Index for sequence number lookup
+  @@index([typeCode, colorCode, patternCode, sizeCode, dateCode])
+}
