@@ -1,4 +1,4 @@
-# Maro SKU System
+# Maro.Shopping SKU System
 
 A clothing inventory management system that generates semantic SKU codes, prints barcode labels, and syncs with Loyverse POS.
 

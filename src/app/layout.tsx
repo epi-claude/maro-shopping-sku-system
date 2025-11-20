@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Maro SKU System",
+  title: "Maro.Shopping SKU System",
   description: "Inventory SKU Generator for clothing",
 };
 
