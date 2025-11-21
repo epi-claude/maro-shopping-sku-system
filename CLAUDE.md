@@ -147,6 +147,29 @@ docs/
 
 ## Railway Deployment
 
+### Branch Strategy
+
+**IMPORTANT**: This project uses a two-branch workflow:
+
+- **`main` branch** → Local development
+  - SQLite database (`prisma/dev.db`)
+  - Test and develop features here
+  - `.env.local` for environment variables
+
+- **`railway-deploy` branch** → Production deployment
+  - PostgreSQL database (Railway)
+  - Deploy to Railway from this branch
+  - Environment variables via Railway dashboard
+
+**Workflow:**
+1. Work on features in `main` branch
+2. Test locally with SQLite
+3. Switch to `railway-deploy` branch
+4. Merge changes from `main`
+5. Push to trigger Railway deployment
+
+### Deployment Guide
+
 **For deploying to Railway with PostgreSQL**, follow the complete guide:
 - **docs/RAILWAY_POSTGRES_DEPLOYMENT.md** - Step-by-step deployment checklist
 
