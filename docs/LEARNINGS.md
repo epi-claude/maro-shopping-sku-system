@@ -249,15 +249,42 @@ railway run npx prisma db seed
 
 ---
 
-### Complete Railway Deployment Checklist
+### THE SOLUTION - What Actually Works
 
-1. **Add Node.js version** (.nvmrc + package.json engines)
-2. **Use placeholder DATABASE_URL** in schema.prisma
-3. **Override with real URL** in prisma.config.ts
-4. **Simplify start command** (just `npm start`)
-5. **Add PostgreSQL database** in Railway dashboard
-6. **Verify DATABASE_URL variable** is set to `${{Postgres.DATABASE_URL}}`
-7. **Run migrations manually** after first successful deploy
+**Problem:** prisma.config.ts with `import "dotenv/config"` prevents Railway from injecting DATABASE_URL
+
+**Solution:** Delete prisma.config.ts, use env("DATABASE_URL") directly in schema.prisma
+
+**Working configuration:**
+```prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")  // Simple. No placeholder.
+}
+```
+
+**Railway Variables:**
+```
+DATABASE_URL = ${{Postgres.DATABASE_URL}}  // Reference syntax, not hardcoded
+```
+
+**railway.json:**
+```json
+{
+  "deploy": {
+    "startCommand": "npx prisma db push && npx prisma db seed && npm start"
+  }
+}
+```
+
+**Why this works:**
+- Railway injects DATABASE_URL at runtime (not build time)
+- No dotenv needed - Railway provides env vars directly
+- Migrations run in startCommand where DATABASE_URL is available
+- No config file to interfere with environment
+
+**See docs/RAILWAY_POSTGRES_DEPLOYMENT.md for complete guide**
 
 ---
 
