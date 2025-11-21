@@ -288,6 +288,81 @@ DATABASE_URL = ${{Postgres.DATABASE_URL}}  // Reference syntax, not hardcoded
 
 ---
 
+## Loyverse API Integration
+
+### Fuzzy Search Returns Wrong Items
+**Error**: Items showing as synced but not appearing in Loyverse, or wrong items being matched
+
+**Cause**: Loyverse API `/items?sku=XXX` endpoint does fuzzy/partial matching instead of exact matching. Similar SKUs like `CRBGABSM25111801` and `CRBKANSM25111801` both match the same item.
+
+**Solution**: Verify exact SKU match after search:
+
+```typescript
+const searchResponse = await fetch(`${LOYVERSE_API_URL}/items?sku=${item.sku}`);
+const searchData = await searchResponse.json();
+
+// Don't trust search results blindly - verify exact match
+if (searchData.items?.length > 0) {
+  const foundSku = searchData.items[0].variants?.[0]?.sku;
+  if (foundSku === item.sku) {
+    existingItem = searchData.items[0]; // Only if exact match
+  }
+}
+```
+
+---
+
+### HTTP 405 Method Not Allowed on Item Update
+**Error**: `HTTP 405` when trying to update existing items in Loyverse
+
+**Cause**: Loyverse API doesn't support updating items via PUT or PATCH methods
+
+**Solution**: Skip items that already exist (create-only approach):
+
+```typescript
+if (existingItem) {
+  // Mark as synced since it's already in Loyverse
+  await prisma.inventory.update({
+    where: { sku: item.sku },
+    data: { syncedToLoyverse: true }
+  });
+  continue; // Skip to next item
+}
+
+// Only create new items (POST)
+await fetch(`${LOYVERSE_API_URL}/items`, {
+  method: 'POST',
+  body: JSON.stringify(loyverseItem)
+});
+```
+
+---
+
+### Unexpected End of JSON Input
+**Error**: `SyntaxError: Unexpected end of JSON input` when parsing error responses from Loyverse
+
+**Cause**: Trying to parse empty or non-JSON error responses with `.json()`
+
+**Solution**: Get response as text first, then try parsing:
+
+```typescript
+if (!syncResponse.ok) {
+  const responseText = await syncResponse.text();
+  let errorMessage = `HTTP ${syncResponse.status}`;
+
+  try {
+    const errorData = JSON.parse(responseText);
+    errorMessage = errorData.errors?.[0]?.details || errorMessage;
+  } catch {
+    errorMessage = responseText || errorMessage;
+  }
+
+  results.errors.push({ sku: item.sku, error: errorMessage });
+}
+```
+
+---
+
 ## Template for New Learnings
 
 ```markdown
