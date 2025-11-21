@@ -7,8 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Placeholder URL for schema validation - overridden by prisma.config.ts at runtime
-  url      = "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+  url      = env("DATABASE_URL")
 }
 
 // Code Library Tables
