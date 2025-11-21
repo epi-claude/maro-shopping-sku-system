@@ -107,13 +107,36 @@ docs/
 
 ### Loyverse Integration
 
-Manual sync via `/api/loyverse/sync`. Requires `LOYVERSE_API_TOKEN` in `.env.local`.
+**Production-ready POS integration** - Syncs inventory items to Loyverse for sales tracking.
 
-Items sync with:
-- `item_name` - Display name for receipts
-- `sku` / `barcode` - 14-char SKU code
-- `cost` / `price` - Purchase cost and selling price
-- `category_id` - Matched by type name
+**Setup:**
+- Requires `LOYVERSE_API_TOKEN` environment variable
+  - Local: Add to `.env.local`
+  - Railway: Add via Railway dashboard Variables tab
+- Get token from Loyverse Dashboard → Settings → Developer Tools → API Access Tokens
+
+**How it works:**
+1. Select items in Inventory page
+2. Click "Sync to Loyverse" button
+3. API checks if item exists (by SKU)
+4. Creates new items only (Loyverse API doesn't support updates)
+5. Marks items as synced in database
+
+**Item mapping:**
+- `item_name` → Display name (e.g., "Dress, Blue Floral, M")
+- `reference_id`, `sku`, `barcode` → 14-char SKU
+- `cost` → Purchase cost
+- `default_price` → Selling price
+- `category_id` → Auto-mapped by type name (creates if needed)
+- `track_stock` → Enabled
+
+**Important notes:**
+- **Exact SKU matching**: Loyverse search uses fuzzy matching, we verify exact match to prevent false duplicates
+- **Create-only**: Items already in Loyverse are skipped (API limitation)
+- **Error handling**: Improved to parse non-JSON error responses
+- **Logging**: Detailed console logs for debugging sync issues
+
+**See:** `src/app/api/loyverse/sync/route.ts:1-242`
 
 ## Important Notes
 
@@ -123,6 +146,29 @@ Items sync with:
 - Always run `npx prisma generate` after schema changes, then restart dev server
 
 ## Railway Deployment
+
+### Branch Strategy
+
+**IMPORTANT**: This project uses a two-branch workflow:
+
+- **`main` branch** → Local development
+  - SQLite database (`prisma/dev.db`)
+  - Test and develop features here
+  - `.env.local` for environment variables
+
+- **`railway-deploy` branch** → Production deployment
+  - PostgreSQL database (Railway)
+  - Deploy to Railway from this branch
+  - Environment variables via Railway dashboard
+
+**Workflow:**
+1. Work on features in `main` branch
+2. Test locally with SQLite
+3. Switch to `railway-deploy` branch
+4. Merge changes from `main`
+5. Push to trigger Railway deployment
+
+### Deployment Guide
 
 **For deploying to Railway with PostgreSQL**, follow the complete guide:
 - **docs/RAILWAY_POSTGRES_DEPLOYMENT.md** - Step-by-step deployment checklist
