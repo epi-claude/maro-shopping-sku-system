@@ -122,11 +122,23 @@ Items sync with:
 - Database file is in `prisma/dev.db` (gitignored)
 - Always run `npx prisma generate` after schema changes, then restart dev server
 
+## Railway Deployment
+
+**For deploying to Railway with PostgreSQL**, follow the complete guide:
+- **docs/RAILWAY_POSTGRES_DEPLOYMENT.md** - Step-by-step deployment checklist
+
+**Key points:**
+- Use `env("DATABASE_URL")` directly in schema.prisma
+- DO NOT create prisma.config.ts (causes env var conflicts)
+- Set DATABASE_URL as reference variable: `${{Postgres.DATABASE_URL}}`
+- Run migrations in startCommand, not build
+
 ## Documentation Maintenance
 
 **IMPORTANT**: When working on this project, update documentation:
 
 1. **docs/LEARNINGS.md** - Add any errors encountered and their solutions
 2. **docs/PATTERNS.md** - Add any reusable patterns discovered
+3. **docs/RAILWAY_POSTGRES_DEPLOYMENT.md** - Update if Railway deployment process changes
 
 This ensures continuous improvement and knowledge retention across sessions.

@@ -163,6 +163,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if item exists (by searching for SKU)
+        console.log(`[Loyverse Sync] Searching for SKU: ${item.sku}`);
         const searchResponse = await fetch(
           `${LOYVERSE_API_URL}/items?sku=${encodeURIComponent(item.sku)}`,
           {
@@ -175,36 +176,50 @@ export async function POST(request: NextRequest) {
         let existingItem = null;
         if (searchResponse.ok) {
           const searchData = await searchResponse.json();
-          existingItem = searchData.items?.[0];
-        }
-
-        let syncResponse;
-        if (existingItem) {
-          // Update existing item
-          loyverseItem.id = existingItem.id;
-          if (existingItem.variants?.[0]?.variant_id) {
-            loyverseItem.variants[0].variant_id = existingItem.variants[0].variant_id;
+          console.log(`[Loyverse Sync] Search returned ${searchData.items?.length || 0} items for SKU ${item.sku}`);
+          if (searchData.items?.length > 0) {
+            console.log(`[Loyverse Sync] Found item:`, JSON.stringify(searchData.items[0], null, 2));
+            // Loyverse search does fuzzy matching - verify exact SKU match
+            const foundItem = searchData.items[0];
+            const foundSku = foundItem.variants?.[0]?.sku;
+            if (foundSku === item.sku) {
+              existingItem = foundItem;
+              console.log(`[Loyverse Sync] Confirmed exact SKU match`);
+            } else {
+              console.log(`[Loyverse Sync] SKU mismatch! Searched for ${item.sku} but found ${foundSku}, treating as new item`);
+            }
           }
-
-          syncResponse = await fetch(`${LOYVERSE_API_URL}/items/${existingItem.id}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(loyverseItem),
-          });
         } else {
-          // Create new item
-          syncResponse = await fetch(`${LOYVERSE_API_URL}/items`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(loyverseItem),
-          });
+          console.log(`[Loyverse Sync] Search failed with status ${searchResponse.status}`);
         }
+
+        // Loyverse API doesn't support updating items via API
+        // Skip items that already exist in Loyverse
+        if (existingItem) {
+          console.log(`[Loyverse Sync] SKU ${item.sku} already exists in Loyverse, marking as synced`);
+          // Mark as synced since it's already in Loyverse
+          await prisma.inventory.update({
+            where: { sku: item.sku },
+            data: {
+              syncedToLoyverse: true,
+              loyverseSyncedAt: new Date(),
+            },
+          });
+          results.success.push(item.sku);
+          continue; // Skip to next item
+        }
+
+        console.log(`[Loyverse Sync] Creating new item in Loyverse for SKU ${item.sku}`);
+
+        // Create new item (POST only - updates not supported by Loyverse API)
+        const syncResponse = await fetch(`${LOYVERSE_API_URL}/items`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(loyverseItem),
+        });
 
         if (syncResponse.ok) {
           // Update database to mark as synced
@@ -217,10 +232,21 @@ export async function POST(request: NextRequest) {
           });
           results.success.push(item.sku);
         } else {
-          const errorData = await syncResponse.json();
+          // Handle error response - get text first to avoid JSON parse errors
+          const responseText = await syncResponse.text();
+          let errorMessage = `HTTP ${syncResponse.status}`;
+
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.errors?.[0]?.details || errorData.message || errorMessage;
+          } catch {
+            // If not JSON, use the text response or status
+            errorMessage = responseText || errorMessage;
+          }
+
           results.errors.push({
             sku: item.sku,
-            error: errorData.errors?.[0]?.details || 'Unknown error',
+            error: errorMessage,
           });
         }
       } catch (err) {

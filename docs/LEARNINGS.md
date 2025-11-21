@@ -155,6 +155,139 @@ if (!fs.existsSync(dbPath)) {
 
 ---
 
+## Railway Deployment
+
+### Node.js Version Mismatch
+**Error**: `EBADENGINE Unsupported engine { required: { node: '>=20.9.0' }, current: { node: 'v18.20.5' } }`
+
+**Cause**: Next.js 16 requires Node.js ≥20.9.0, but Railway defaults to older version
+
+**Solution**: Specify Node.js version in two places:
+
+1. Create `.nvmrc`:
+```
+20
+```
+
+2. Add `engines` to package.json:
+```json
+{
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}
+```
+
+---
+
+### Prisma DATABASE_URL Required at Build Time
+**Error**: `P1012: Environment variable not found: DATABASE_URL` during `npm run build`
+
+**Cause**: Prisma validates schema.prisma during build, but DATABASE_URL isn't available until runtime in Railway
+
+**Solution**: Use placeholder URL in schema that gets overridden at runtime:
+
+1. In `prisma/schema.prisma`:
+```prisma
+datasource db {
+  provider = "postgresql"
+  // Placeholder for build-time validation
+  url = "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+}
+```
+
+2. In `prisma.config.ts`:
+```typescript
+import { defineConfig } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  engine: "classic",
+  datasource: {
+    // Real URL from environment overrides schema placeholder
+    url: process.env.DATABASE_URL || "postgresql://placeholder:placeholder@placeholder:5432/placeholder",
+  },
+});
+```
+
+3. Add to package.json:
+```json
+{
+  "scripts": {
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate"
+  }
+}
+```
+
+---
+
+### Database Connection Timeout on Startup
+**Error**: `P1001: Can't reach database server at [internal-address]` during Railway deployment start
+
+**Cause**: Start command tries to run database migrations before Railway's internal networking is ready
+
+**Solution**: Simplify start command, run migrations manually after deploy:
+
+1. In `railway.json`:
+```json
+{
+  "deploy": {
+    "startCommand": "npm start"
+  }
+}
+```
+
+2. After successful deployment, run migrations via CLI:
+```bash
+railway link
+railway run npx prisma db push
+railway run npx prisma db seed
+```
+
+**Why this works**: Separating migrations from startup gives Railway time to establish database networking. Future deploys can keep using simple start command since schema is already pushed.
+
+---
+
+### THE SOLUTION - What Actually Works
+
+**Problem:** prisma.config.ts with `import "dotenv/config"` prevents Railway from injecting DATABASE_URL
+
+**Solution:** Delete prisma.config.ts, use env("DATABASE_URL") directly in schema.prisma
+
+**Working configuration:**
+```prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")  // Simple. No placeholder.
+}
+```
+
+**Railway Variables:**
+```
+DATABASE_URL = ${{Postgres.DATABASE_URL}}  // Reference syntax, not hardcoded
+```
+
+**railway.json:**
+```json
+{
+  "deploy": {
+    "startCommand": "npx prisma db push && npx prisma db seed && npm start"
+  }
+}
+```
+
+**Why this works:**
+- Railway injects DATABASE_URL at runtime (not build time)
+- No dotenv needed - Railway provides env vars directly
+- Migrations run in startCommand where DATABASE_URL is available
+- No config file to interfere with environment
+
+**See docs/RAILWAY_POSTGRES_DEPLOYMENT.md for complete guide**
+
+---
+
 ## Template for New Learnings
 
 ```markdown
